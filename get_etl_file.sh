@@ -98,21 +98,29 @@ etl_file=all.etl
 seq_file=all.seq
 sql_file=all.sql
 cfg_file=all.cfg
+tmp_pv_file=all.pv.tmp
 pv_file=all.pv
 output_file=all.output
 detail_file=all.detail
 rm all.*
 
+
+
 # 1. get cfg file and seq file list 
-parm_list=`cat ${input_yaml_file} |grep "clsfd_aws_single_table_transform_handler" |awk -F' ' '{print $3}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq`
-for parm in $parm_list;
+cat ${input_yaml_file} |grep "clsfd_aws_single_table_transform_handler" |awk -F' ' '{print $3}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file
+cat ${input_yaml_file} |grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file 
+cat ${tmp_pv_file}|uniq|while read parm 
 do
 	value=`cat ${input_yaml_file} |grep -E -i "${parm}*:"|awk -F":" '{print $2}'|sed "s/\"//g"|sed "s/'//g"|awk '{print $1}'|awk '$1=$1'`
-	echo $parm:$value >> $pv_file
+	echo $parm:$value >> ${pv_file}
 done
 
+
+
 # 2. get seq and cfg file list and download from ETL server to local
-cat ${input_yaml_file}|grep "clsfd_aws_single_table_transform_handler" |awk -F' ' '{print $3}'|awk '{print $1}'|awk '$1=$1' |while read line 
+cat ${input_yaml_file}|grep "clsfd_aws_single_table_transform_handler" |awk -F' ' '{print $3}'|awk '{print $1}'|awk '$1=$1' |uniq >> ${etl_file}
+cat ${input_yaml_file}|grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|uniq >> ${etl_file}
+cat ${etl_file}|uniq|while read line 
 do
 	if [[ "${line}" =~ "#" ]];then
 		tmp_vara=`echo ${line#*&}`
@@ -151,6 +159,9 @@ else
 fi
 
 
+
+
+
 # 3. get sql file list
 downloaded_seq_file_cnt=`ls ${seq_home}/*.seq |wc -l`
 if [[ ${downloaded_seq_file_cnt} -gt 0 ]];then
@@ -168,6 +179,11 @@ else
 	echo "Error: downloaded seq file cnt is less than 0 means download failed"
 	exit 2
 fi
+
+
+
+
+
 
 # 4. download sql file from ETL server to local
 if [ -e ${sql_file} ];then
@@ -194,7 +210,7 @@ downloaded_cfg_file_cnt=`ls ${cfg_home}/*.cfg |wc -l`
 if [[ ${downloaded_cfg_file_cnt} -gt 0 ]];then
 	all_cfg_file_cnt=`cat ${cfg_file}|sed '/^$/d'|wc -l`
 	if [[ ${downloaded_cfg_file_cnt} -eq ${all_cfg_file_cnt} ]];then
-		if [[ "${osName}" == "MSYS" ]];then
+		if [[ "${osName}" == "MSYS" ]] || [[ "${osName}" == "Linu" ]];then
 			sed -i 's/spark.yarn.queue/#spark.yarn.queue/g' ${cfg_home}/*.cfg
 		else
 			sed -i "" 's/spark.yarn.queue/#spark.yarn.queue/g' ${cfg_home}/*.cfg
@@ -208,6 +224,9 @@ else
 fi
 
 
+
+
+
 # 6. proceed downloaded sql file 
 downloaded_sql_file_cnt=`ls ${sql_home}/*.sql |wc -l`
 if [[ ${downloaded_sql_file_cnt} -gt 0 ]];then
@@ -217,7 +236,7 @@ if [[ ${downloaded_sql_file_cnt} -gt 0 ]];then
 		# 1. keyword: alter table set location 
 		echo "1.keyword: 'alter table set location', auto updated to 'clsfdworkingROOT':" >> $output_file
 		grep -i -w "alter" ${sql_home}/*.sql|grep -v "#"|awk -F ':' '{print $1,": kw1"}'|uniq >> $output_file
-		if [[ "${osName}" == "MSYS" ]];then
+		if [[ "${osName}" == "MSYS" ]] || [[ "${osName}" == "Linu" ]];then
 			sed -i 's#/sys/edw/\${zeta_env}/working/clsfd/clsfd_working/clsfd#\${clsfdworkingROOT}#g' `grep -i -w "alter" ${sql_home}/*.sql|grep -v "#"|awk -F ':' '{print $1}'|uniq`
 		else
 			sed -i "" 's#/sys/edw/\${zeta_env}/working/clsfd/clsfd_working/clsfd#\${clsfdworkingROOT}#g' `grep -i -w "alter" ${sql_home}/*.sql|grep -v "#"|awk -F ':' '{print $1}'|uniq`
@@ -227,7 +246,7 @@ if [[ ${downloaded_sql_file_cnt} -gt 0 ]];then
 		# 2. keyword: clsfd.
 		echo "2.keyword: 'clsfd.', auto updated 'clsfd.' to 'clsfd_':" >> $output_file
 		grep  -i -E "[ ]+clsfd\." ${sql_home}/*.sql|grep -v "#"|awk -F ':' '{print $1,": kw2"}'|uniq >> $output_file
-		if [[ "${osName}" == "MSYS" ]];then
+		if [[ "${osName}" == "MSYS" ]] || [[ "${osName}" == "Linu" ]];then
 			sed -i 's/clsfd\./clsfd\_/g' `grep  -i -E "[ ]+clsfd\." ${sql_home}/*.sql|grep -v "#"|awk -F ':' '{print $1}'|uniq`
 		else
 			sed -i "" 's/clsfd\./clsfd\_/g' `grep  -i -E "[ ]+clsfd\." ${sql_home}/*.sql|grep -v "#"|awk -F ':' '{print $1}'|uniq`
