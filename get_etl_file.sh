@@ -118,7 +118,7 @@ do
 	echo $parm:$value >> ${pv_file}
 done
 
-exit 0
+
 
 
 # 2. get seq and cfg file list and download from ETL server to local
