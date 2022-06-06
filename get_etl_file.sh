@@ -1,6 +1,9 @@
 #!/bin/bash
 set -u
 
+### update grep 
+### remove rowcount
+
 #if [ $# -ne 2 ];then
 #	echo "Error: Uasge: $0 <Yaml File Name> <Stored File Full Path>"
 #	echo "Example: sh get_etl_file.sh doris.yaml /c/Users/fwen/4test"
@@ -107,7 +110,7 @@ rm all.*
 
 
 # 1. get cfg file and seq file list 
-cat ${input_yaml_file} |grep "clsfd_aws_single_table_transform_handler" |awk -F' ' '{print $3}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file
+cat ${input_yaml_file} |grep "clsfd_aws_single_table_transform_handler" |awk -F'clsfd_aws_single_table_transform_handler.ksh' '{print $2}'|awk '{print $1}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file
 cat ${input_yaml_file} |grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file 
 cat ${tmp_pv_file}|uniq|while read parm 
 do
@@ -115,10 +118,11 @@ do
 	echo $parm:$value >> ${pv_file}
 done
 
+exit 0
 
 
 # 2. get seq and cfg file list and download from ETL server to local
-cat ${input_yaml_file}|grep "clsfd_aws_single_table_transform_handler" |awk -F' ' '{print $3}'|awk '{print $1}'|awk '$1=$1' |uniq >> ${etl_file}
+cat ${input_yaml_file}|grep "clsfd_aws_single_table_transform_handler" |awk -F'clsfd_aws_single_table_transform_handler.ksh' '{print $2}'|awk '{print $1}'|awk '{print $1}'|awk '$1=$1' |uniq >> ${etl_file}
 cat ${input_yaml_file}|grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|uniq >> ${etl_file}
 cat ${etl_file}|uniq|while read line 
 do
@@ -165,16 +169,16 @@ fi
 # 3. get sql file list
 downloaded_seq_file_cnt=`ls ${seq_home}/*.seq |wc -l`
 if [[ ${downloaded_seq_file_cnt} -gt 0 ]];then
-	all_seq_file_cnt=`cat ${seq_file}|sed '/^$/d'|wc -l`
-	if [[ ${downloaded_seq_file_cnt} -eq ${all_seq_file_cnt} ]];then
-		for seq in `ls ${seq_home}/*.seq`
+	#all_seq_file_cnt=`cat ${seq_file}|sed '/^$/d'|wc -l`
+	#if [[ ${downloaded_seq_file_cnt} -eq ${all_seq_file_cnt} ]];then
+	for seq in `ls ${seq_home}/*.seq`
+	do
+		for line in `cat $seq`
 		do
-			for line in `cat $seq`
-			do
-				echo $line >> $sql_file
-			done
+			echo $line >> $sql_file
 		done
-	fi
+	done
+	#fi
 else
 	echo "Error: downloaded seq file cnt is less than 0 means download failed"
 	exit 2
@@ -208,8 +212,8 @@ echo "########################################################################"
 # 5. proceed downloaded cfg file 
 downloaded_cfg_file_cnt=`ls ${cfg_home}/*.cfg |wc -l`
 if [[ ${downloaded_cfg_file_cnt} -gt 0 ]];then
-	all_cfg_file_cnt=`cat ${cfg_file}|sed '/^$/d'|wc -l`
-	if [[ ${downloaded_cfg_file_cnt} -eq ${all_cfg_file_cnt} ]];then
+	#all_cfg_file_cnt=`cat ${cfg_file}|sed '/^$/d'|wc -l`
+	#if [[ ${downloaded_cfg_file_cnt} -eq ${all_cfg_file_cnt} ]];then
 		if [[ "${osName}" == "MSYS" ]] || [[ "${osName}" == "Linu" ]];then
 			sed -i 's/spark.yarn.queue/#spark.yarn.queue/g' ${cfg_home}/*.cfg
 		else
@@ -217,7 +221,7 @@ if [[ ${downloaded_cfg_file_cnt} -gt 0 ]];then
 		fi
 		echo "Info: proceed stt remove queue under ${cfg_home} successfully"
 		echo "########################################################################"
-	fi
+	#fi
 else
 	echo "Error: downloaded cfg file cnt is less than 0 means download failed"
 	exit 2
