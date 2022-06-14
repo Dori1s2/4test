@@ -97,6 +97,7 @@ else
 fi
 
 cd ${work_home}
+tmp_etl_file=all.etl.tmp
 etl_file=all.etl
 seq_file=all.seq
 sql_file=all.sql
@@ -108,10 +109,10 @@ detail_file=all.detail
 rm all.*
 
 
-
-# 1. get cfg file and seq file list 
+# 1. get variable and value keypair from stt etl id
 cat ${input_yaml_file} |grep "clsfd_aws_single_table_transform_handler" |awk -F'clsfd_aws_single_table_transform_handler.ksh' '{print $2}'|awk '{print $1}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file
 cat ${input_yaml_file} |grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|grep "&"| awk -F '&' '{print $2}'|awk -F '#' '{print $1}'|uniq >> $tmp_pv_file 
+
 cat ${tmp_pv_file}|uniq|while read parm 
 do
 	value=`cat ${input_yaml_file} |grep -E -i "${parm}*:"|awk -F":" '{print $2}'|sed "s/\"//g"|sed "s/'//g"|awk '{print $1}'|awk '$1=$1'`
@@ -119,35 +120,49 @@ do
 done
 
 
+# 2. get etl id list
+cat ${input_yaml_file}|grep "clsfd_aws_single_table_transform_handler" |awk -F'clsfd_aws_single_table_transform_handler.ksh' '{print $2}'|awk '{print $1}'|awk '{print $1}'|awk '$1=$1' |uniq >> ${tmp_etl_file}
+cat ${input_yaml_file}|grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|uniq >> ${tmp_etl_file}
 
-
-# 2. get seq and cfg file list and download from ETL server to local
-cat ${input_yaml_file}|grep "clsfd_aws_single_table_transform_handler" |awk -F'clsfd_aws_single_table_transform_handler.ksh' '{print $2}'|awk '{print $1}'|awk '{print $1}'|awk '$1=$1' |uniq >> ${etl_file}
-cat ${input_yaml_file}|grep -i -E "clsfd_multiply_update_hdfs_handler"| awk -F'clsfd_multiply_update_hdfs_handler.ksh' '{print $2}'|awk  '{print $1}'|awk '{print $1}'|awk '$1=$1'|uniq >> ${etl_file}
-cat ${etl_file}|uniq|while read line 
+cat ${tmp_etl_file}|uniq|while read line 
 do
 	if [[ "${line}" =~ "#" ]];then
 		tmp_vara=`echo ${line#*&}`
 		vara=`echo ${tmp_vara%#*}`
-		value=`cat ${pv_file} |grep -i "${vara}"|awk -F':' '{print $2}'|awk '{print $1}'|awk '$1=$1'`
-		etl_id=`echo ${line}|sed 's/&//g'|sed 's/#//g'|sed "s/$vara/$value/g"`
+		#value=`cat ${pv_file} |grep -i "${vara}"|awk -F':' '{print $2}'|awk '{print $1}'|awk '$1=$1'`
+		for i in `cat ${pv_file} |grep -i "${vara}"|awk -F':' '{print $2}'`;
+		do
+			value=`echo $i|awk '{print $1}'|awk '$1=$1'`
+			etl_id=`echo ${line}|sed 's/&//g'|sed 's/#//g'|sed "s/$vara/$value/g"`  
+			echo ${etl_id} >> ${etl_file}
+		done
 	else
 		etl_id=`echo $line`
-	fi
-	
-	if [ "${mode_flag}" == "repo" ];then
-		echo ${etl_id}_stt.cfg >> ${cfg_file}
-		cp ${input_repo_path}/etl/cfg/dw_clsfd/${etl_id}_stt.cfg ${cfg_home}/ ;
-		echo ${etl_id}_stt.sql.seq >> ${seq_file}
-		cp ${input_repo_path}/etl/sql/dw_clsfd/${etl_id}_stt.sql.seq ${seq_home}/ ;
-	elif [ "${mode_flag}" == "tunnel" ];then
-		echo ${etl_id}_stt.cfg >> ${cfg_file}
-		scp -r -P $input_tunnel_port $current_user@127.0.0.1:/dw/etl/home/prod_clsfd/cfg/dw_clsfd/${etl_id}_stt.cfg ${cfg_home}/ ;
-		echo ${etl_id}_stt.sql.seq >> ${seq_file}
-		scp -r -P $input_tunnel_port $current_user@127.0.0.1:/dw/etl/home/prod_clsfd/sql/dw_clsfd/${etl_id}_stt.sql.seq ${seq_home}/ ;
+		echo ${etl_id} >> ${etl_file}
 	fi
 done
 
+# 3. download seq and cfg file according to the etl id file
+if [ -e ${etl_file} ];then
+	cat ${etl_file}|uniq|while read line 
+	do
+		etl_id=`echo $line|awk '{print $1}'|awk '$1=$1'`
+		if [ "${mode_flag}" == "repo" ];then
+			echo ${etl_id}_stt.cfg >> ${cfg_file}
+			cp ${input_repo_path}/etl/cfg/dw_clsfd/${etl_id}_stt.cfg ${cfg_home}/ ;
+			echo ${etl_id}_stt.sql.seq >> ${seq_file}
+			cp ${input_repo_path}/etl/sql/dw_clsfd/${etl_id}_stt.sql.seq ${seq_home}/ ;
+		elif [ "${mode_flag}" == "tunnel" ];then
+			echo ${etl_id}_stt.cfg >> ${cfg_file}
+			scp -r -P $input_tunnel_port $current_user@127.0.0.1:/dw/etl/home/prod_clsfd/cfg/dw_clsfd/${etl_id}_stt.cfg ${cfg_home}/ ;
+			echo ${etl_id}_stt.sql.seq >> ${seq_file}
+			scp -r -P $input_tunnel_port $current_user@127.0.0.1:/dw/etl/home/prod_clsfd/sql/dw_clsfd/${etl_id}_stt.sql.seq ${seq_home}/ ;
+		fi
+	done
+else
+	echo "Error: no such etl file ${work_home}/${etl_file} generated"
+	exit 2
+fi
 
 if [ -e ${cfg_file} -a -e ${seq_file} ];then
 	echo "Info: full cfg file list: ${work_home}/${cfg_file}"
@@ -165,8 +180,7 @@ fi
 
 
 
-
-# 3. get sql file list
+# 4. get sql file list
 downloaded_seq_file_cnt=`ls ${seq_home}/*.seq |wc -l`
 if [[ ${downloaded_seq_file_cnt} -gt 0 ]];then
 	#all_seq_file_cnt=`cat ${seq_file}|sed '/^$/d'|wc -l`
@@ -183,9 +197,6 @@ else
 	echo "Error: downloaded seq file cnt is less than 0 means download failed"
 	exit 2
 fi
-
-
-
 
 
 
@@ -345,6 +356,4 @@ else
 	echo "Error: downloaded sql file cnt is less than 0 means download failed"
 	exit 2
 fi
-
-
 
